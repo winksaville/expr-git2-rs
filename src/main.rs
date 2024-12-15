@@ -31,6 +31,8 @@ mod tests {
         let test_dir_str = format!("{}/", test_dir.display());
         let repo_dir = test_dir.join(".git");
         let repo_dir_str = format!("{}/", repo_dir.display());
+        let empty_file = "empty";
+        let empty_file_path = test_dir.join(empty_file);
 
         {
             // Clean up any existing test repo
@@ -41,13 +43,12 @@ mod tests {
             // Create a new repository
             let repo = Repository::init(&test_dir)?;
 
-            // Create a new file in the repository
-            let file_path = test_dir.join("README.md");
-            fs::write(&file_path, "Hello, world!")?;
+            // An empty test file
+            fs::File::create(&empty_file_path)?;
 
             // Stage the file
             let mut index = repo.index()?;
-            index.add_path(Path::new("README.md"))?;
+            index.add_path(Path::new(empty_file))?;
             index.write()?;
 
             // Commit the changes
@@ -82,8 +83,11 @@ mod tests {
             assert!(output_str.contains(&format!("Path to repository: {repo_dir_str:?}")));
             assert!(output_str.contains(&format!("Workdir: Some({test_dir_str:?})")));
             assert!(output_str.contains(r#"HEAD reference: Some("refs/heads/main")"#));
-        }
 
+            // Verify file length is 0
+            let metadata = fs::metadata(&empty_file_path)?;
+            assert_eq!(metadata.len(), 0);
+        }
         Ok(())
     }
 }
