@@ -1,10 +1,19 @@
 use git2::Repository;
+use log::debug;
+use std::env;
 use std::error::Error;
 use std::io::{self, Write};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    custom_logger::env_logger_init(&log_level);
+
+    debug!("main:+");
     let repo = Repository::open(".")?;
-    get_top_level_info(&repo, &mut io::stdout())
+    get_top_level_info(&repo, &mut io::stdout())?;
+    debug!("main:-");
+
+    Ok(())
 }
 
 /// Retrieves and writes top-level repository information to the given writer.
@@ -23,71 +32,122 @@ mod tests {
     use git2::{Repository, Signature};
     use std::fs;
     use std::io::Cursor;
-    use std::path::Path;
+    use std::path::{Path, PathBuf, MAIN_SEPARATOR};
+    use std::sync::Once;
+    use log::debug;
+
+    static INIT: Once = Once::new();
+
+    fn init_logger() {
+        INIT.call_once(|| {
+            let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+            //println!("RUST_LOG={}", log_level);
+            custom_logger::env_logger_init(&log_level);
+        });
+    }
+
+    #[test]
+    fn test_logging() {
+        init_logger();
+        debug!("Test with logging");
+    }
 
     #[test]
     fn test_get_top_level_info() -> Result<(), Box<dyn Error>> {
-        let test_dir = fs::canonicalize("test_repo")?;
-        let test_dir_str = format!("{}/", test_dir.display());
-        let repo_dir = test_dir.join(".git");
-        let repo_dir_str = format!("{}/", repo_dir.display());
-        let empty_file = "empty";
-        let empty_file_path = test_dir.join(empty_file);
+        init_logger();
 
-        {
-            // Clean up any existing test repo
-            if test_dir.exists() {
-                fs::remove_dir_all(&test_dir)?;
-            }
+        fs::create_dir_all("test_repos/test_top_level_info")?;
+        let test_dir = PathBuf::from("test_repos/test_top_level_info");
 
-            // Create a new repository
-            let repo = Repository::init(&test_dir)?;
+        // Create an empty repository
+        create_empty_repo(&test_dir)?;
 
-            // An empty test file
-            fs::File::create(&empty_file_path)?;
+        // Open the repository
+        let repo = Repository::open(&test_dir)?;
 
-            // Stage the file
-            let mut index = repo.index()?;
-            index.add_path(Path::new(empty_file))?;
-            index.write()?;
+        // Capture output in an in-memory buffer
+        let mut output = Cursor::new(Vec::new());
+        get_top_level_info(&repo, &mut output)?;
 
-            // Commit the changes
-            let tree_id = index.write_tree()?;
-            let tree = repo.find_tree(tree_id)?;
-            let signature = Signature::now("Test User", "test@example.com")?;
-            repo.commit(
-                Some("HEAD"),
-                &signature,
-                &signature,
-                "Initial commit",
-                &tree,
-                &[],
-            )?;
+        // Convert buffer to a string
+        let output_str = String::from_utf8(output.into_inner())?;
+        debug!("\n{output_str}");
+
+        let test_dir_str = add_trailing_separator_canonicalized(&test_dir)?;
+        let repo_dir_str = add_trailing_separator_canonicalized(test_dir.join(".git"))?;
+
+        // Verify repository information
+        assert!(output_str.contains("Is bare: false"));
+        assert!(output_str.contains("Is worktree: false"));
+        assert!(output_str.contains(&format!("Path to repository: {repo_dir_str:?}")));
+        assert!(output_str.contains(&format!("Workdir: Some({test_dir_str:?})")));
+        assert!(output_str.contains(r#"HEAD reference: Some("refs/heads/main")"#));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_empty_repo() -> Result<(), Box<dyn Error>> {
+        let test_dir = PathBuf::from("test_repos/test_empty_repo");
+
+        // Create an empty repository
+        create_empty_repo(&test_dir)?;
+
+        // Re-open the repository
+        let repo = Repository::open(&test_dir)?;
+
+        // Verify the HEAD commit points to an empty tree
+        let head_commit = repo.head()?.peel_to_commit()?;
+        let tree = head_commit.tree()?;
+        assert!(tree.iter().next().is_none(), "Tree is not empty");
+
+        Ok(())
+    }
+
+    // thx to GPT4o: https://chatgpt.com/share/675f6532-ba08-800c-847e-6a3dd874a4dc
+    fn add_trailing_separator_canonicalized<P: AsRef<Path>>(path: P) -> std::io::Result<String> {
+        let canonicalized = fs::canonicalize(&path)?;
+        let path_str = canonicalized.to_string_lossy();
+        Ok(if path_str.ends_with(MAIN_SEPARATOR) {
+            path_str.to_string()
+        } else {
+            format!("{}{}", path_str, MAIN_SEPARATOR)
+        })
+    }
+
+    /// Creates an empty Git repository at the specified path.
+    fn create_empty_repo<P: AsRef<Path>>(path: P) -> Result<(), Box<dyn Error>> {
+        // Clean up any existing test repo
+        let path = path.as_ref();
+        if path.exists() {
+            fs::remove_dir_all(path)?;
         }
 
-        {
-            // Re-open the repository
-            let repo = Repository::open(&test_dir)?;
+        // Initialize the repository
+        let repo = Repository::init(path)?;
 
-            // Capture output in an in-memory buffer
-            let mut output = Cursor::new(Vec::new());
-            get_top_level_info(&repo, &mut output)?;
+        // Set explicit branch for compatibility
+        repo.set_head("refs/heads/main")?;
 
-            // Convert buffer to a string
-            let output_str = String::from_utf8(output.into_inner())?;
-            //print!("{output_str}");
+        // Get the empty index and write it
+        let mut index = repo.index()?;
+        index.write()?;
 
-            // Verify repository information
-            assert!(output_str.contains("Is bare: false"));
-            assert!(output_str.contains("Is worktree: false"));
-            assert!(output_str.contains(&format!("Path to repository: {repo_dir_str:?}")));
-            assert!(output_str.contains(&format!("Workdir: Some({test_dir_str:?})")));
-            assert!(output_str.contains(r#"HEAD reference: Some("refs/heads/main")"#));
+        // Create an empty tree
+        let tree_id = index.write_tree()?;
+        let tree = repo.find_tree(tree_id)?;
 
-            // Verify file length is 0
-            let metadata = fs::metadata(&empty_file_path)?;
-            assert_eq!(metadata.len(), 0);
-        }
+        // Commit the empty tree
+        let signature = Signature::now("Test User", "test@example.com")?;
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "Initial commit",
+            &tree,
+            &[],
+        )?;
+
         Ok(())
     }
 }
