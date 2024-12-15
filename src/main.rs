@@ -20,7 +20,7 @@ fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use git2::{IndexAddOption, Repository, Signature};
+    use git2::{Repository, Signature};
     use std::fs;
     use std::io::Cursor;
     use std::path::Path;
@@ -28,43 +28,55 @@ mod tests {
     #[test]
     fn test_get_top_level_info() -> Result<(), Box<dyn Error>> {
         let test_dir = Path::new("test_repo");
+        let test_dir_str = fs::canonicalize(test_dir)?.to_string_lossy().into_owned() + "/";
+        let repo_dir = test_dir.join(".git");
+        let repo_dir_str = fs::canonicalize(repo_dir)?.to_string_lossy().into_owned() + "/";
         
-        // Clean up any existing test repo
-        if test_dir.exists() {
-            fs::remove_dir_all(test_dir)?;
+        {
+            // Clean up any existing test repo
+            if test_dir.exists() {
+                fs::remove_dir_all(test_dir)?;
+            }
+
+            // Create a new repository
+            let repo = Repository::init(test_dir)?;
+
+            // Create a new file in the repository
+            let file_path = test_dir.join("README.md");
+            fs::write(&file_path, "Hello, world!")?;
+
+            // Stage the file
+            let mut index = repo.index()?;
+            index.add_path(Path::new("README.md"))?;
+            index.write()?;
+
+            // Commit the changes
+            let tree_id = index.write_tree()?;
+            let tree = repo.find_tree(tree_id)?;
+            let signature = Signature::now("Test User", "test@example.com")?;
+            repo.commit(Some("HEAD"), &signature, &signature, "Initial commit", &tree, &[])?;
         }
 
-        // Create a new repository
-        let repo = Repository::init(test_dir)?;
+        {
+            // Re-open the repository
+            let repo = Repository::open(test_dir)?;
+            println!("opened repo: {:?}", test_dir);
 
-        // Create a new file in the repository
-        let file_path = test_dir.join("README.md");
-        fs::write(&file_path, "Hello, world!")?;
+            // Capture output in an in-memory buffer
+            let mut output = Cursor::new(Vec::new());
+            get_top_level_info(&repo, &mut output)?;
 
-        // Stage the file
-        let mut index = repo.index()?;
-        index.add_path(Path::new("README.md"))?;
-        index.write()?;
+            // Convert buffer to a string
+            let output_str = String::from_utf8(output.into_inner()).expect("Valid UTF-8");
+            print!("{output_str}");
 
-        // Commit the changes
-        let tree_id = index.write_tree()?;
-        let tree = repo.find_tree(tree_id)?;
-        let signature = Signature::now("Test User", "test@example.com")?;
-        repo.commit(Some("HEAD"), &signature, &signature, "Initial commit", &tree, &[])?;
-
-        // Capture output in an in-memory buffer
-        let mut output = Cursor::new(Vec::new());
-        get_top_level_info(&repo, &mut output)?;
-
-        // Convert buffer to a string
-        let output_str = String::from_utf8(output.into_inner()).expect("Valid UTF-8");
-
-        // Verify repository information
-        assert!(output_str.contains("Is bare: false"));
-        assert!(output_str.contains("Is worktree: true"));
-        assert!(output_str.contains(&format!("Path to repository: {:?}", test_dir.join(".git"))));
-        assert!(output_str.contains(&format!("Workdir: {:?}", test_dir)));
-        assert!(output_str.contains("HEAD reference: Some(\"refs/heads/master\")"));
+            // Verify repository information
+            assert!(output_str.contains("Is bare: false"));
+            assert!(output_str.contains("Is worktree: false"));
+            assert!(output_str.contains(&format!("Path to repository: {repo_dir_str:?}")));
+            assert!(output_str.contains(&format!("Workdir: Some({test_dir_str:?})")));
+            assert!(output_str.contains(r#"HEAD reference: Some("refs/heads/main")"#));
+        }
 
         Ok(())
     }
