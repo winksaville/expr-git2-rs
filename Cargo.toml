@@ -1,0 +1,11 @@
+[package]
+name = "expr-git2-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Use latest git2-rs so we have merge_base_octopus
+#git2 = { git = "https://github.com/rust-lang/git2-rs" }
+git2 = "0.19.0"
+custom_logger = { git = "https://github.com/winksaville/custom_logger" }
+log = "0.4.22"
