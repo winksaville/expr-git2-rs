@@ -1,13 +1,14 @@
-use git2::{Repository, Error};
+use git2::Repository;
+use std::error::Error;
 use std::io::{self, Write};
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), Box<dyn Error>> {
     let repo = Repository::open(".")?;
     get_top_level_info(&repo, &mut io::stdout())
 }
 
 /// Retrieves and writes top-level repository information to the given writer.
-fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(), Error> {
+fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(), Box<dyn Error>> {
     writeln!(writer, "Is bare: {}", repo.is_bare())?;
     writeln!(writer, "Is worktree: {}", repo.is_worktree())?;
     writeln!(writer, "Path to repository: {:?}", repo.path())?;
@@ -19,13 +20,13 @@ fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    use git2::{IndexAddOption, Repository, Signature};
     use std::fs;
-    use std::path::Path;
     use std::io::Cursor;
-    use git2::{Repository, Signature};
+    use std::path::Path;
 
     #[test]
-    fn test_get_top_level_info() -> Result<(), Error> {
+    fn test_get_top_level_info() -> Result<(), Box<dyn Error>> {
         let test_dir = Path::new("test_repo");
         
         // Clean up any existing test repo
