@@ -27,19 +27,19 @@ mod tests {
 
     #[test]
     fn test_get_top_level_info() -> Result<(), Box<dyn Error>> {
-        let test_dir = Path::new("test_repo");
-        let test_dir_str = fs::canonicalize(test_dir)?.to_string_lossy().into_owned() + "/";
+        let test_dir = fs::canonicalize("test_repo")?;
+        let test_dir_str = format!("{}/", test_dir.display());
         let repo_dir = test_dir.join(".git");
-        let repo_dir_str = fs::canonicalize(repo_dir)?.to_string_lossy().into_owned() + "/";
-        
+        let repo_dir_str = format!("{}/", repo_dir.display());
+
         {
             // Clean up any existing test repo
             if test_dir.exists() {
-                fs::remove_dir_all(test_dir)?;
+                fs::remove_dir_all(&test_dir)?;
             }
 
             // Create a new repository
-            let repo = Repository::init(test_dir)?;
+            let repo = Repository::init(&test_dir)?;
 
             // Create a new file in the repository
             let file_path = test_dir.join("README.md");
@@ -59,16 +59,15 @@ mod tests {
 
         {
             // Re-open the repository
-            let repo = Repository::open(test_dir)?;
-            println!("opened repo: {:?}", test_dir);
+            let repo = Repository::open(&test_dir)?;
 
             // Capture output in an in-memory buffer
             let mut output = Cursor::new(Vec::new());
             get_top_level_info(&repo, &mut output)?;
 
             // Convert buffer to a string
-            let output_str = String::from_utf8(output.into_inner()).expect("Valid UTF-8");
-            print!("{output_str}");
+            let output_str = String::from_utf8(output.into_inner())?;
+            //print!("{output_str}");
 
             // Verify repository information
             assert!(output_str.contains("Is bare: false"));
@@ -80,4 +79,5 @@ mod tests {
 
         Ok(())
     }
+
 }
