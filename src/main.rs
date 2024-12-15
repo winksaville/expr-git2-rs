@@ -54,7 +54,14 @@ mod tests {
             let tree_id = index.write_tree()?;
             let tree = repo.find_tree(tree_id)?;
             let signature = Signature::now("Test User", "test@example.com")?;
-            repo.commit(Some("HEAD"), &signature, &signature, "Initial commit", &tree, &[])?;
+            repo.commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "Initial commit",
+                &tree,
+                &[],
+            )?;
         }
 
         {
@@ -79,5 +86,4 @@ mod tests {
 
         Ok(())
     }
-
 }
