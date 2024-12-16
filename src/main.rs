@@ -29,7 +29,7 @@ fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use git2::{Repository, Signature};
+    use git2::{Repository, Signature, Oid, BranchType};
     use std::fs;
     use std::io::Cursor;
     use std::path::{Path, PathBuf, MAIN_SEPARATOR};
@@ -60,7 +60,7 @@ mod tests {
         let test_dir = PathBuf::from("test_repos/test_top_level_info");
 
         // Create an empty repository
-        create_empty_repo(&test_dir)?;
+        create_empty_repo(&test_dir, "Initial commit")?;
 
         // Open the repository
         let repo = Repository::open(&test_dir)?;
@@ -88,18 +88,44 @@ mod tests {
 
     #[test]
     fn test_empty_repo() -> Result<(), Box<dyn Error>> {
+        init_logger();
+
         let test_dir = PathBuf::from("test_repos/test_empty_repo");
 
         // Create an empty repository
-        create_empty_repo(&test_dir)?;
+        create_empty_repo(&test_dir, "Initial commit")?;
 
         // Re-open the repository
         let repo = Repository::open(&test_dir)?;
 
-        // Verify the HEAD commit points to an empty tree
+        // Get head commit
         let head_commit = repo.head()?.peel_to_commit()?;
+
+        // Assert all the parameters are as expected
+        assert!(head_commit.parent_count() == 0, "Unexpected: commit has {} parents", head_commit.parent_count());
+        assert!(head_commit.id() != Oid::from_str("0")?, "Unexpected: id is 0");
+        assert!(head_commit.message().unwrap_or_default() == "Initial commit", "Unexpected: commit message");
+        assert!(head_commit.author().name().unwrap_or_default() == "Test User", "Unexpected: author name");
+        assert!(head_commit.author().email().unwrap_or_default() == "test@example.com", "Unexpected: author email");
+        assert!(head_commit.committer().name().unwrap_or_default() == "Test User", "Unexpected: committer name");
+        assert!(head_commit.committer().email().unwrap_or_default() == "test@example.com", "Unexpected: committer email");
+
+        // Verify the HEAD commit points to an empty tree
         let tree = head_commit.tree()?;
         assert!(tree.iter().next().is_none(), "Tree is not empty");
+
+        // there should be no blob
+        assert!(repo.find_blob(head_commit.id()).is_err(), "Unexpected: blob found");
+
+        // There should be 1 local branch
+        let b = &repo.branches(Some(BranchType::Local))?.into_iter().collect::<Result<Vec<_>, _>>()?;
+        assert!(b.len() == 1, "Unexpected: branches found");
+        let (b0, b0_type) = &b[0];
+        assert!(*b0_type == BranchType::Local, "Unexpected: b0_type={b0_type:?}");
+
+        // The branch should be named "main"
+        let b0_name = b0.name()?.unwrap();
+        assert!(b0_name == "main", "Unexpected: b0_name={b0_name}");
 
         Ok(())
     }
@@ -116,7 +142,7 @@ mod tests {
     }
 
     /// Creates an empty Git repository at the specified path.
-    fn create_empty_repo<P: AsRef<Path>>(path: P) -> Result<(), Box<dyn Error>> {
+    fn create_empty_repo<P: AsRef<Path>>(path: P, message: &str) -> Result<(), Box<dyn Error>> {
         // Clean up any existing test repo
         let path = path.as_ref();
         if path.exists() {
@@ -143,7 +169,7 @@ mod tests {
             Some("HEAD"),
             &signature,
             &signature,
-            "Initial commit",
+            message,
             &tree,
             &[],
         )?;
