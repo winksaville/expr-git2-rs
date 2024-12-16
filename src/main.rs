@@ -1,15 +1,18 @@
+use clap::Parser;
 use git2::Repository;
 use log::debug;
 use std::env;
 use std::error::Error;
 use std::io::{self, Write};
-use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(short, long, default_value = ".")]
     repo_path: String,
+
+    #[arg(short, long, default_value = "head")]
+    sha: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -21,9 +24,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     debug!("args={:?}", args);
 
-
+    // Top-level repository information
     let repo = Repository::open(args.repo_path)?;
     get_top_level_info(&repo, &mut io::stdout())?;
+
+    // Get the commit specified by the SHA or the head commit
+    let commit = if args.sha == "head" {
+        // Get head commit
+        repo.head()?.peel_to_commit()?
+    } else {
+        // Get the commit specified by the SHA
+        repo.find_commit(repo.revparse_single(&args.sha)?.peel_to_commit()?.id())?
+    };
+    println!("commit={:?}", commit);
+
     debug!("main:-");
 
     Ok(())
@@ -42,12 +56,12 @@ fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use git2::{Repository, Signature, Oid, BranchType};
+    use git2::{BranchType, Oid, Repository, Signature};
+    use log::debug;
     use std::fs;
     use std::io::Cursor;
     use std::path::{Path, PathBuf, MAIN_SEPARATOR};
     use std::sync::Once;
-    use log::debug;
 
     static INIT: Once = Once::new();
 
@@ -115,26 +129,57 @@ mod tests {
         let head_commit = repo.head()?.peel_to_commit()?;
 
         // Assert all the parameters are as expected
-        assert!(head_commit.parent_count() == 0, "Unexpected: commit has {} parents", head_commit.parent_count());
-        assert!(head_commit.id() != Oid::from_str("0")?, "Unexpected: id is 0");
-        assert!(head_commit.message().unwrap_or_default() == "Initial commit", "Unexpected: commit message");
-        assert!(head_commit.author().name().unwrap_or_default() == "Test User", "Unexpected: author name");
-        assert!(head_commit.author().email().unwrap_or_default() == "test@example.com", "Unexpected: author email");
-        assert!(head_commit.committer().name().unwrap_or_default() == "Test User", "Unexpected: committer name");
-        assert!(head_commit.committer().email().unwrap_or_default() == "test@example.com", "Unexpected: committer email");
+        assert!(
+            head_commit.parent_count() == 0,
+            "Unexpected: commit has {} parents",
+            head_commit.parent_count()
+        );
+        assert!(
+            head_commit.id() != Oid::from_str("0")?,
+            "Unexpected: id is 0"
+        );
+        assert!(
+            head_commit.message().unwrap_or_default() == "Initial commit",
+            "Unexpected: commit message"
+        );
+        assert!(
+            head_commit.author().name().unwrap_or_default() == "Test User",
+            "Unexpected: author name"
+        );
+        assert!(
+            head_commit.author().email().unwrap_or_default() == "test@example.com",
+            "Unexpected: author email"
+        );
+        assert!(
+            head_commit.committer().name().unwrap_or_default() == "Test User",
+            "Unexpected: committer name"
+        );
+        assert!(
+            head_commit.committer().email().unwrap_or_default() == "test@example.com",
+            "Unexpected: committer email"
+        );
 
         // Verify the HEAD commit points to an empty tree
         let tree = head_commit.tree()?;
         assert!(tree.iter().next().is_none(), "Tree is not empty");
 
         // there should be no blob
-        assert!(repo.find_blob(head_commit.id()).is_err(), "Unexpected: blob found");
+        assert!(
+            repo.find_blob(head_commit.id()).is_err(),
+            "Unexpected: blob found"
+        );
 
         // There should be 1 local branch
-        let b = &repo.branches(Some(BranchType::Local))?.into_iter().collect::<Result<Vec<_>, _>>()?;
+        let b = &repo
+            .branches(Some(BranchType::Local))?
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
         assert!(b.len() == 1, "Unexpected: branches found");
         let (b0, b0_type) = &b[0];
-        assert!(*b0_type == BranchType::Local, "Unexpected: b0_type={b0_type:?}");
+        assert!(
+            *b0_type == BranchType::Local,
+            "Unexpected: b0_type={b0_type:?}"
+        );
 
         // The branch should be named "main"
         let b0_name = b0.name()?.unwrap();
@@ -178,14 +223,7 @@ mod tests {
 
         // Commit the empty tree
         let signature = Signature::now("Test User", "test@example.com")?;
-        repo.commit(
-            Some("HEAD"),
-            &signature,
-            &signature,
-            message,
-            &tree,
-            &[],
-        )?;
+        repo.commit(Some("HEAD"), &signature, &signature, message, &tree, &[])?;
 
         Ok(())
     }
