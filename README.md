@@ -22,18 +22,33 @@ wink@fwlaptop 24-12-15T17:15:50.573Z:~/prgs/rust/myrepos/expr-git2-rs (main)
 
 ## Run
 
+Run with `-h` or `--help` to get the help message:
 ```shell
-wink@fwlaptop 24-12-15T23:35:55.842Z:~/prgs/rust/myrepos/expr-git2-rs (main)
+wink@3900x 24-12-16T20:04:26.201Z:~/prgs/rust/myrepos/expr-git2-rs (main)
+$ cargo run -- -h
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running `target/debug/expr-git2-rs -h`
+Usage: expr-git2-rs [OPTIONS]
+
+Options:
+  -r, --repo-path <REPO_PATH>  [default: .]
+  -h, --help                   Print help
+  -V, --version                Print version
+wink@3900x 24-12-16T20:04:34.362Z:~/prgs/rust/myrepos/expr-git2-rs (main)
+```
+
+Run with no arguments to get the default output on the current repo at ".":
+```shell
+wink@3900x 24-12-16T20:04:34.362Z:~/prgs/rust/myrepos/expr-git2-rs (main)
 $ cargo run
-   Compiling expr-git2-rs v0.1.0 (/home/wink/prgs/rust/myrepos/expr-git2-rs)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.56s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.04s
      Running `target/debug/expr-git2-rs`
 Is bare: false
 Is worktree: false
 Path to repository: "/home/wink/prgs/rust/myrepos/expr-git2-rs/.git/"
 Workdir: Some("/home/wink/prgs/rust/myrepos/expr-git2-rs/")
 HEAD reference: Some("refs/heads/main")
-wink@fwlaptop 24-12-15T23:36:18.140Z:~/prgs/rust/myrepos/expr-git2-rs (main)
+wink@3900x 24-12-16T20:06:05.561Z:~/prgs/rust/myrepos/expr-git2-rs (main)
 ```
 
 ## Tests

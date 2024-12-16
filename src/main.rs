@@ -3,13 +3,26 @@ use log::debug;
 use std::env;
 use std::error::Error;
 use std::io::{self, Write};
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value = ".")]
+    repo_path: String,
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     custom_logger::env_logger_init(&log_level);
 
     debug!("main:+");
-    let repo = Repository::open(".")?;
+
+    let args = Args::parse();
+    debug!("args={:?}", args);
+
+
+    let repo = Repository::open(args.repo_path)?;
     get_top_level_info(&repo, &mut io::stdout())?;
     debug!("main:-");
 
