@@ -1,5 +1,5 @@
 use clap::Parser;
-use git2::{Commit, DiffFormat, DiffOptions, Repository, Tree};
+use git2::{BranchType, Commit, DiffFormat, DiffOptions, Repository, Tree};
 use log::debug;
 use std::env;
 use std::error::Error;
@@ -55,15 +55,70 @@ fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(),
 
 fn show_commit(repo_path: &str, commit: &Commit) -> Result<(), Box<dyn Error>> {
     log::info!(
-        "show_commit:+ repo_path: {repo_path}, commit_id: {}",
+        "show_commit:+ repo_path: {repo_path}, commit id: {}",
         commit.id()
     );
     let repo = Repository::open(repo_path)?;
 
-    //let commit = repo.revparse_single(oid_string)?.peel_to_commit()?;
-    let commit_tree = commit.tree()?;
-    let parents = commit.parents().collect::<Vec<_>>();
+    println!("parent_count: {}", commit.parent_count());
+    println!("id: {}", commit.id());
+    println!("summary: {}", commit.summary().unwrap_or_default());
+    // println!("message: {}", commit.message().unwrap_or_default());
+    println!("author: {}", commit.author().name().unwrap_or_default());
+    println!(
+        "author email: {}",
+        commit.author().email().unwrap_or_default()
+    );
+    println!(
+        "committer: {}",
+        commit.committer().name().unwrap_or_default()
+    );
+    println!(
+        "committer email: {}",
+        commit.committer().email().unwrap_or_default()
+    );
 
+    let commit_tree = commit.tree()?;
+    println!("tree: {}", commit_tree.id());
+    println!("tree entries: {}", commit_tree.len());
+    println!("blob id: {:?}", repo.find_blob(commit.id()));
+
+    fn print_branch(repo: &Repository, branch_type: BranchType) -> Result<(), Box<dyn Error>> {
+        let b_iter = repo.branches(Some(branch_type))?;
+        for branch in b_iter {
+            match branch {
+                Ok((branch, branch_type)) => {
+                    println!(
+                        "branch: {}, branch_type: {:?}",
+                        branch.name()?.unwrap(),
+                        branch_type
+                    );
+                }
+                Err(e) => {
+                    println!("branch: <invalid>, error: {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+    print_branch(&repo, BranchType::Local)?;
+    print_branch(&repo, BranchType::Remote)?;
+
+    //let (b0, b0_type) = &b[0];
+    //assert!(
+    //    *b0_type == BranchType::Local,
+    //    "Unexpected: b0_type={b0_type:?}"
+    //);
+
+    //// The branch should be named "main"
+    //let b0_name = b0.name()?.unwrap();
+    //assert!(b0_name == "main", "Unexpected: b0_name={b0_name}");        // Get head commit
+    //let head_commit = repo.head()?.peel_to_commit()?;
+
+    println!("commit parent_count: {}", commit.parent_count());
+
+    let parents = commit.parents().collect::<Vec<_>>();
     match parents.len() {
         0 => {
             println!("TODO: Handle root commit");
@@ -75,35 +130,68 @@ fn show_commit(repo_path: &str, commit: &Commit) -> Result<(), Box<dyn Error>> {
             let _ = print_diff(&repo, &parent_tree, &commit_tree, "parent vs commit_tree");
         }
         2 => {
-            // Create an in-memory index to store the merged result
-            let mut index = repo.index()?;
+            println!("------");
+            print_diff(
+                &repo,
+                &parents[0].tree()?,
+                &commit_tree,
+                "parents[0] vs commit_tree",
+            )?;
+            println!("------");
+            print_diff(
+                &repo,
+                &parents[1].tree()?,
+                &commit_tree,
+                "parents[1] vs commit_tree",
+            )?;
+            println!("------");
+            print_diff(
+                &repo,
+                &parents[1].tree()?,
+                &parents[0].tree()?,
+                "parents[1] vs parents[0]",
+            )?;
+            println!("------");
+            print_diff(
+                &repo,
+                &parents[0].tree()?,
+                &parents[1].tree()?,
+                "parents[0] vs parents[1]",
+            )?;
 
-            // Add parent0_tree entries to the index
-            add_tree_to_index(&mut index, &repo, &parents[0].tree()?, None)?;
+            //// Create an in-memory index to store the merged result
+            //let mut index = repo.index()?;
 
-            // Write the index to create a new tree
-            let tree_oid = index.write_tree()?;
-            let new_tree = repo.find_tree(tree_oid)?;
+            //// Add parent0_tree entries to the index
+            //add_tree_to_index(&mut index, &repo, &parents[0].tree()?, None)?;
+
+            //// Write the index to create a new tree
+            //let tree_oid = index.write_tree()?;
+            //let new_tree = repo.find_tree(tree_oid)?;
             //print_diff(&repo, &new_tree, &parents[0].tree()?, "new_tree vs parents[0].tree() should be the same!!!!!")?;
 
-            let org_tree = parents[0].tree()?;
-            let mut org_tree_iter = org_tree.iter();
-            for entry in new_tree.iter() {
-                if let Some(org_entry) = org_tree_iter.next() {
-                    println!(
-                        "Org tree entry: path={}, id={}, mode={}",
-                        org_entry.name().unwrap_or("<invalid>"),
-                        org_entry.id(),
-                        org_entry.filemode()
-                    );
-                }
-                println!(
-                    "New tree entry: path={}, id={}, mode={}",
-                    entry.name().unwrap_or("<invalid>"),
-                    entry.id(),
-                    entry.filemode()
-                );
-            }
+            //// Iterate over the new_tree and org_tree entries
+            //// printing them over/under each other.
+            //if log::log_enabled!(log::Level::Trace) {
+            //    let org_tree = parents[0].tree()?;
+            //    let mut org_tree_iter = org_tree.iter();
+            //    for entry in new_tree.iter() {
+            //        if let Some(org_entry) = org_tree_iter.next() {
+            //            log::trace!(
+            //                "Org tree entry: path={}, id={}, mode={}",
+            //                org_entry.name().unwrap_or("<invalid>"),
+            //                org_entry.id(),
+            //                org_entry.filemode()
+            //            );
+            //        }
+            //        log::trace!(
+            //            "New tree entry: path={}, id={}, mode={}",
+            //            entry.name().unwrap_or("<invalid>"),
+            //            entry.id(),
+            //            entry.filemode()
+            //        );
+            //    }
+            //}
 
             // // Handle merge commits
             // let merged_baseline_tree =
@@ -135,12 +223,13 @@ fn show_commit(repo_path: &str, commit: &Commit) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn add_tree_to_index(
+fn _add_tree_to_index(
     index: &mut git2::Index,
     repo: &git2::Repository,
     tree: &git2::Tree,
     base_path: Option<&std::path::Path>,
 ) -> Result<(), git2::Error> {
+    log::trace!("add_tree_to_index:+");
     for entry in tree.iter() {
         let entry_name = entry
             .name()
@@ -155,11 +244,11 @@ fn add_tree_to_index(
             std::path::PathBuf::from(entry_name)
         };
 
-        println!("Processing entry: full_path={}", full_path.display());
+        log::trace!("Processing entry: full_path={}", full_path.display());
 
         let object = repo.find_object(oid, None)?;
         if let Some(blob) = object.as_blob() {
-            println!("Adding blob to index: {}", full_path.display());
+            log::trace!("Adding blob to index: {}", full_path.display());
             index.add_frombuffer(
                 &git2::IndexEntry {
                     ctime: git2::IndexTime::new(0, 0),
@@ -178,12 +267,13 @@ fn add_tree_to_index(
                 blob.content(),
             )?;
         } else if let Some(subtree) = object.as_tree() {
-            println!("Recursing into subtree: {}", full_path.display());
-            add_tree_to_index(index, repo, subtree, Some(&full_path))?;
+            log::trace!("Recursing into subtree: {}", full_path.display());
+            _add_tree_to_index(index, repo, subtree, Some(&full_path))?;
         } else {
             return Err(git2::Error::from_str("Unexpected object type in tree"));
         }
     }
+    log::trace!("add_tree_to_index:-");
     Ok(())
 }
 
