@@ -130,6 +130,10 @@ fn show_commit(repo_path: &str, commit: &Commit) -> Result<(), Box<dyn Error>> {
                     &commit_tree,
                     format!("parent: {} vs commit_tree: {}", parent_id, commit.id()).as_str(),
                 );
+                if true { // Recurse into parent commit
+                    let parent_commit = repo.find_commit(parent_id)?;
+                    show_commit(repo_path, &parent_commit)?;
+                }
             }
         }
     }
