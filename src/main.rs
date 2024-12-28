@@ -53,15 +53,21 @@ fn get_top_level_info<W: Write>(repo: &Repository, writer: &mut W) -> Result<(),
     Ok(())
 }
 
+/// Displays information about the specified commit.
 fn show_commit(repo_path: &str, commit: &Commit) -> Result<(), Box<dyn Error>> {
     log::info!(
         "show_commit:+ repo_path: {repo_path}, commit id: {}",
         commit.id()
     );
     let repo = Repository::open(repo_path)?;
+    let parents = commit.parents().collect::<Vec<_>>();
 
-    println!("parent_count: {}", commit.parent_count());
     println!("id: {}", commit.id());
+    println!("parent_count: {}", commit.parent_count());
+    println!(
+        "parents: {:?}",
+        parents.iter().map(|p| p.id()).collect::<Vec<_>>()
+    );
     println!("summary: {}", commit.summary().unwrap_or_default());
     // println!("message: {}", commit.message().unwrap_or_default());
     println!("author: {}", commit.author().name().unwrap_or_default());
@@ -79,9 +85,9 @@ fn show_commit(repo_path: &str, commit: &Commit) -> Result<(), Box<dyn Error>> {
     );
 
     let commit_tree = commit.tree()?;
-    println!("tree: {}", commit_tree.id());
-    println!("tree entries: {}", commit_tree.len());
-    println!("blob id: {:?}", repo.find_blob(commit.id()));
+    println!("commit_tree id: {}", commit_tree.id());
+    println!("commit_tree entries: {}", commit_tree.len());
+    println!("commit_tree blob id: {:?}", repo.find_blob(commit.id()));
 
     fn print_branch(repo: &Repository, branch_type: BranchType) -> Result<(), Box<dyn Error>> {
         let b_iter = repo.branches(Some(branch_type))?;
@@ -102,119 +108,31 @@ fn show_commit(repo_path: &str, commit: &Commit) -> Result<(), Box<dyn Error>> {
 
         Ok(())
     }
+    println!("\nLocal branches:");
     print_branch(&repo, BranchType::Local)?;
+    println!("\nRemote branches:");
     print_branch(&repo, BranchType::Remote)?;
 
-    //let (b0, b0_type) = &b[0];
-    //assert!(
-    //    *b0_type == BranchType::Local,
-    //    "Unexpected: b0_type={b0_type:?}"
-    //);
+    println!("\ncommit parent_count: {}", commit.parent_count());
 
-    //// The branch should be named "main"
-    //let b0_name = b0.name()?.unwrap();
-    //assert!(b0_name == "main", "Unexpected: b0_name={b0_name}");        // Get head commit
-    //let head_commit = repo.head()?.peel_to_commit()?;
-
-    println!("commit parent_count: {}", commit.parent_count());
-
-    let parents = commit.parents().collect::<Vec<_>>();
     match parents.len() {
         0 => {
             println!("TODO: Handle root commit");
         }
-        1 => {
-            // Handle non-merge commits
-            let parent = parents.first().unwrap();
-            let parent_tree = parent.tree()?;
-            let _ = print_diff(&repo, &parent_tree, &commit_tree, "parent vs commit_tree");
-        }
-        2 => {
-            println!("------");
-            print_diff(
-                &repo,
-                &parents[0].tree()?,
-                &commit_tree,
-                "parents[0] vs commit_tree",
-            )?;
-            println!("------");
-            print_diff(
-                &repo,
-                &parents[1].tree()?,
-                &commit_tree,
-                "parents[1] vs commit_tree",
-            )?;
-            println!("------");
-            print_diff(
-                &repo,
-                &parents[1].tree()?,
-                &parents[0].tree()?,
-                "parents[1] vs parents[0]",
-            )?;
-            println!("------");
-            print_diff(
-                &repo,
-                &parents[0].tree()?,
-                &parents[1].tree()?,
-                "parents[0] vs parents[1]",
-            )?;
-
-            //// Create an in-memory index to store the merged result
-            //let mut index = repo.index()?;
-
-            //// Add parent0_tree entries to the index
-            //add_tree_to_index(&mut index, &repo, &parents[0].tree()?, None)?;
-
-            //// Write the index to create a new tree
-            //let tree_oid = index.write_tree()?;
-            //let new_tree = repo.find_tree(tree_oid)?;
-            //print_diff(&repo, &new_tree, &parents[0].tree()?, "new_tree vs parents[0].tree() should be the same!!!!!")?;
-
-            //// Iterate over the new_tree and org_tree entries
-            //// printing them over/under each other.
-            //if log::log_enabled!(log::Level::Trace) {
-            //    let org_tree = parents[0].tree()?;
-            //    let mut org_tree_iter = org_tree.iter();
-            //    for entry in new_tree.iter() {
-            //        if let Some(org_entry) = org_tree_iter.next() {
-            //            log::trace!(
-            //                "Org tree entry: path={}, id={}, mode={}",
-            //                org_entry.name().unwrap_or("<invalid>"),
-            //                org_entry.id(),
-            //                org_entry.filemode()
-            //            );
-            //        }
-            //        log::trace!(
-            //            "New tree entry: path={}, id={}, mode={}",
-            //            entry.name().unwrap_or("<invalid>"),
-            //            entry.id(),
-            //            entry.filemode()
-            //        );
-            //    }
-            //}
-
-            // // Handle merge commits
-            // let merged_baseline_tree =
-            //     create_merged_baseline_tree(&repo, &parents[0], &parents[1])?;
-            // let _ = print_diff(
-            //     &repo,
-            //     &merged_baseline_tree,
-            //     &commit_tree,
-            //     "merged_baseline_tree vs commit_tree",
-            // );
-        }
         _ => {
-            println!("TODO: Handle more than 2 parents");
+            println!("\nPrint parent_tree vs commit_tree");
+            for parent in &parents {
+                let parent_tree = parent.tree()?;
+                let parent_id = parent.id();
+                let _ = print_diff(
+                    &repo,
+                    &parent_tree,
+                    &commit_tree,
+                    format!("parent: {} vs commit_tree: {}", parent_id, commit.id()).as_str(),
+                );
+            }
         }
     }
-
-    println!(
-        "commit id: {}, summary: '{}', parent.len: {}, parents: {:?}",
-        commit.id(),
-        commit.summary().unwrap_or(""),
-        parents.len(),
-        parents.iter().map(|p| p.id()).collect::<Vec<_>>(),
-    );
 
     log::info!(
         "show_commit:- repo_path: {repo_path}, commit_id: {}",
@@ -283,7 +201,7 @@ fn print_diff(
     to_tree: &Tree,
     label: &str,
 ) -> Result<(), Box<dyn Error>> {
-    println!("print_diff:+ {label}");
+    println!("\nprint_diff:+ {label}");
 
     // Create and configure DiffOptions
     let mut opts = DiffOptions::new();
@@ -295,22 +213,33 @@ fn print_diff(
 
     let diff = repo.diff_tree_to_tree(Some(from_tree), Some(to_tree), Some(&mut opts))?;
 
+    println!("from_tree id: {} len: {}", from_tree.id(), from_tree.len());
+    println!("  to_tree id: {} len: {}", to_tree.id(), to_tree.len());
+
+    let mut line_number = 1;
     // Print the diff in Patch format with prefixes
     diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
+        line_number += 1;
+        let content = std::str::from_utf8(line.content()).unwrap_or("[INVALID UTF-8]");
+        let lines_in_content = content.lines().count();
+
         // Prefix for added/removed/unchanged lines
-        let prefix = match line.origin() {
-            '+' => "+", // Line added
-            '-' => "-", // Line removed
-            ' ' => " ", // Unchanged line
-            '@' => "@", // Hunk header
-            _ => " ",   // Fallback for other types
-        };
+        //let prefix = match line.origin() {
+        //    '+' => "+", // Line added
+        //    '-' => "-", // Line removed
+        //    ' ' => " ", // Unchanged line
+        //    '@' => "@", // Hunk header
+        //    _ => "?",   // Fallback for other types
+        //};
 
         // Print the prefixed line
         print!(
-            "{}{}",
-            prefix,
-            std::str::from_utf8(line.content()).unwrap_or("[INVALID UTF-8]")
+            "{}:{}:{}{}{}",
+            line_number,
+            lines_in_content,
+            line.origin().len_utf8(),
+            line.origin(), //prefix,
+            content,
         );
 
         true
